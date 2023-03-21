@@ -46,14 +46,60 @@ def test(model, dataloader, nshot):
 
     return miou, fb_iou
 
+def main(argv):
+    # Arguments parsing
+    parser = argparse.ArgumentParser(description='Hypercorrelation Squeeze Pytorch Implementation')
+    parser.add_argument('--datapath', type=str, default='/mnt/netcache/bodyct/experiments/few_shot_segmentation_datasets/HSnet')
+    parser.add_argument('--benchmark', type=str, default='pascal', choices=['pascal', 'coco', 'fss'])
+    parser.add_argument('--logpath', type=str, default='/mnt/netcache/bodyct/experiments/few_shot_segmentation_datasets/HSnet/Logs')
+    parser.add_argument('--bsz', type=int, default=1)
+    parser.add_argument('--nworker', type=int, default=0)
+    parser.add_argument('--load', type=str, default='')
+    parser.add_argument('--fold', type=int, default=0, choices=[0, 1, 2, 3])
+    parser.add_argument('--nshot', type=int, default=1)
+    parser.add_argument('--backbone', type=str, default='resnet101', choices=['vgg16', 'resnet50', 'resnet101'])
+    parser.add_argument('--visualize', action='store_true')
+    parser.add_argument('--use_original_imgsize', action='store_true')
+    args = parser.parse_args(argv)
+    Logger.initialize(args, training=False)
+
+    # Model initialization
+    model = HypercorrSqueezeNetwork(args.backbone, args.use_original_imgsize)
+    model.eval()
+    Logger.log_params(model)
+
+    # Device setup
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    Logger.info('# available GPUs: %d' % torch.cuda.device_count())
+    model = nn.DataParallel(model)
+    model.to(device)
+
+    # Load trained model
+    if args.load == '': raise Exception('Pretrained model not specified.')
+    model.load_state_dict(torch.load(args.load))
+
+    # Helper classes (for testing) initialization
+    Evaluator.initialize()
+    Visualizer.initialize(args.visualize)
+
+    # Dataset initialization
+    FSSDataset.initialize(img_size=400, datapath=args.datapath, use_original_imgsize=args.use_original_imgsize)
+    dataloader_test = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'test', args.nshot)
+
+    # Test HSNet
+    with torch.no_grad():
+        test_miou, test_fb_iou = test(model, dataloader_test, args.nshot)
+    Logger.info('Fold %d mIoU: %5.2f \t FB-IoU: %5.2f' % (args.fold, test_miou.item(), test_fb_iou.item()))
+    Logger.info('==================== Finished Testing ====================')
+
 
 if __name__ == '__main__':
 
     # Arguments parsing
     parser = argparse.ArgumentParser(description='Hypercorrelation Squeeze Pytorch Implementation')
-    parser.add_argument('--datapath', type=str, default='../Datasets_HSN')
+    parser.add_argument('--datapath', type=str, default='/mnt/netcache/bodyct/experiments/few_shot_segmentation_datasets/HSnet')
     parser.add_argument('--benchmark', type=str, default='pascal', choices=['pascal', 'coco', 'fss'])
-    parser.add_argument('--logpath', type=str, default='')
+    parser.add_argument('--logpath', type=str, default='/mnt/netcache/bodyct/experiments/few_shot_segmentation_datasets/HSnet/Logs')
     parser.add_argument('--bsz', type=int, default=1)
     parser.add_argument('--nworker', type=int, default=0)
     parser.add_argument('--load', type=str, default='')

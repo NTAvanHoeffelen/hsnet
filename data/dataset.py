@@ -5,24 +5,27 @@ from torch.utils.data import DataLoader
 from data.pascal import DatasetPASCAL
 from data.coco import DatasetCOCO
 from data.fss import DatasetFSS
-
+from data.umc import DatasetUMC
 
 class FSSDataset:
 
     @classmethod
     def initialize(cls, img_size, datapath, use_original_imgsize):
-
+        
+        # TODO: Add inhouse dataset
         cls.datasets = {
             'pascal': DatasetPASCAL,
             'coco': DatasetCOCO,
             'fss': DatasetFSS,
+            'umc': DatasetUMC,
         }
 
-        cls.img_mean = [0.485, 0.456, 0.406]
-        cls.img_std = [0.229, 0.224, 0.225]
+        cls.img_mean = [0.485, 0.456, 0.406]  # Probably not needed with grayscale data
+        cls.img_std = [0.229, 0.224, 0.225]   # Probably not needed with grayscale data
         cls.datapath = datapath
         cls.use_original_imgsize = use_original_imgsize
 
+        # TODO: Probably not going to resize the inhouse data; Maybe add augmentation?
         cls.transform = transforms.Compose([transforms.Resize(size=(img_size, img_size)),
                                             transforms.ToTensor(),
                                             transforms.Normalize(cls.img_mean, cls.img_std)])
