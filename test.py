@@ -54,7 +54,7 @@ def main(argv):
     parser.add_argument('--logpath', type=str, default='/mnt/netcache/bodyct/experiments/few_shot_segmentation_datasets/HSnet/Logs')
     parser.add_argument('--bsz', type=int, default=1)
     parser.add_argument('--nworker', type=int, default=0)
-    parser.add_argument('--load', type=str, default='')
+    parser.add_argument('--load', type=str, default='mnt/netcache/bodyct/experiments/few_shot_segmentation_datasets/HSnet/Pre-trained_VOC')
     parser.add_argument('--fold', type=int, default=0, choices=[0, 1, 2, 3])
     parser.add_argument('--nshot', type=int, default=1)
     parser.add_argument('--backbone', type=str, default='resnet101', choices=['vgg16', 'resnet50', 'resnet101'])
