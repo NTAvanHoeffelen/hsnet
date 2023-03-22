@@ -1,0 +1,14 @@
+name: hsnet
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.7
+  - pip
+  - numpy
+  - cudatoolkit=10.1
+  - pytorch=1.5.1
+  - torchvision=0.6.1
+  - pip:
+    - tensorboardX
