@@ -26,7 +26,7 @@ RUN git config --global advice.detachedHead false && \
     git -C /home/user/hsnet checkout umc && \
     chown -R user /home/user/hsnet
 
-RUN conda env create -f /home/user/hsnet.yaml
+RUN conda env create -f /home/user/hsnet/hsnet.yaml
 RUN echo "source activate hsnet" > ~/.bashrc
 ENV PATH /opt/conda/envs/hsnet/bin:$PATH
 
