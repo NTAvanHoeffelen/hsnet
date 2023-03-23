@@ -3,7 +3,7 @@ import datetime
 import logging
 import os
 
-from tensorboardX import SummaryWriter
+#from tensorboardX import SummaryWriter
 import torch
 
 
@@ -97,7 +97,7 @@ class Logger:
         logging.getLogger('').addHandler(console)
 
         # Tensorboard writer
-        cls.tbd_writer = SummaryWriter(os.path.join(cls.logpath, 'tbd/runs'))
+        #cls.tbd_writer = SummaryWriter(os.path.join(cls.logpath, 'tbd/runs'))
 
         # Log arguments
         logging.info('\n:=========== Few-shot Seg. with HSNet ===========')
