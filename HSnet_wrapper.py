@@ -1,5 +1,6 @@
-import .train as train
-import .test as test
+
+import train as train
+import test as test
 import sys
 
 if __name__ == "__main__":
