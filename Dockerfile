@@ -30,12 +30,12 @@ RUN conda env create -f /home/user/hsnet/hsnet.yaml
 RUN echo "source activate hsnet" > ~/.bashrc
 ENV PATH /opt/conda/envs/hsnet/bin:$PATH
 
-USER root
+#USER root
 
-COPY run.sh /root/
+#COPY run.sh /root/
 
 # Configure entrypoint
-ENTRYPOINT ["/bin/bash","/root/run.sh"]
+ENTRYPOINT ["/bin/bash","/home/user/hsnet/run.sh"]
 
 # docker build "/mnt/netcache/bodyct/temp/fewshot_Niels/hsnet" --no-cache --tag doduo1.umcn.nl/nielsvanhoeffelen/fs_model:1.0
 # docker push doduo1.umcn.nl/nielsvanhoeffelen/fs_model:1.0
