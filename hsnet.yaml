@@ -11,4 +11,4 @@ dependencies:
   - pytorch=1.5.1
   - torchvision=0.6.1
   - pip:
-    - tensorboardX
+    - tensorboardX=1.14
