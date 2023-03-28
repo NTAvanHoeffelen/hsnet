@@ -29,7 +29,7 @@ def test(model, dataloader, nshot):
         assert pred_mask.size() == batch['query_mask'].size()
 
         # 2. Evaluate prediction
-        area_inter, area_union = Evaluator.classify_prediction(pred_mask.clone(), batch)
+        area_inter, area_union = Evaluator.classify_prediction(pred_mask.clone(), batch) # TODO: IMPLEMENT DICE
         average_meter.update(area_inter, area_union, batch['class_id'], loss=None)
         average_meter.write_process(idx, len(dataloader), epoch=-1, write_batch_idx=1)
 
