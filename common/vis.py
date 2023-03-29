@@ -11,9 +11,9 @@ from . import utils
 class Visualizer:
 
     @classmethod
-    def initialize(cls, visualize):
-        cls.visualize = visualize
-        if not visualize:
+    def initialize(cls, args):
+        cls.visualize = args.visualize
+        if not args.visualize:
             return
 
         cls.colors = {'red': (255, 50, 50), 'blue': (102, 140, 255)}
@@ -23,7 +23,7 @@ class Visualizer:
         cls.mean_img = [0.485, 0.456, 0.406]
         cls.std_img = [0.229, 0.224, 0.225]
         cls.to_pil = transforms.ToPILImage()
-        cls.vis_path = './vis/'
+        cls.vis_path = os.path.join(args.datapath, '/vis/')
         if not os.path.exists(cls.vis_path): os.makedirs(cls.vis_path)
 
     @classmethod

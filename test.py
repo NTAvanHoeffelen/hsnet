@@ -80,7 +80,7 @@ def main(argv):
 
     # Helper classes (for testing) initialization
     Evaluator.initialize()
-    Visualizer.initialize(args.visualize)
+    Visualizer.initialize(args)
 
     # Dataset initialization
     FSSDataset.initialize(img_size=400, datapath=args.datapath, use_original_imgsize=args.use_original_imgsize)
@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
     # Helper classes (for testing) initialization
     Evaluator.initialize()
-    Visualizer.initialize(args.visualize)
+    Visualizer.initialize(args)
 
     # Dataset initialization
     FSSDataset.initialize(img_size=400, datapath=args.datapath, use_original_imgsize=args.use_original_imgsize)
