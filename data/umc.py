@@ -10,10 +10,12 @@ import json
 from natsort import natsorted
 import glob
 from medpy import io
+import random
+import gc
 
 class DatasetUMC(Dataset):
     def __init__(self, datapath, fold, transform, split, shot, use_original_imgsize):
-        self.split = split #'val' if split in ['val', 'test'] else 'trn' 
+        self.split = split
         self.fold = fold
         self.nfolds = 1                     # 
         self.nclass = 86                    #
@@ -21,8 +23,19 @@ class DatasetUMC(Dataset):
         self.shot = shot
         self.use_original_imgsize = True    # Should probably always be true
 
+        random_seed = 123456
+        np.random.seed(random_seed)
+        random.seed(random_seed)
+        torch.manual_seed(random_seed)
+        torch.cuda.manual_seed(random_seed)
+        # Set a fixed value for the hash seed
+        os.environ["PYTHONHASHSEED"] = str(random_seed)
+
         self.img_path = os.path.join(datapath, 'Scans/')            
         self.ann_path = os.path.join(datapath, 'Annotations/')
+        self.list_of_img_files = natsorted(glob.glob(self.img_path + "/*.nii.gz"))
+        self.list_of_annot_files = natsorted(glob.glob(self.ann_path + "/*.nii.gz"))
+
         self.datapath = datapath
         self.transform = transform                                                  # NOTE: should it contain data augmentation? --> test first without then with
 
@@ -34,92 +47,181 @@ class DatasetUMC(Dataset):
 
         # TODO: A split should be made for test support scans and test query scans.
         # NOTE: This actually should not be necessary. We just need to make sure that when we test on the test set, that the query and support item do not come from the same scan.
-        self.training_scans, self.test_scans, self.hsnet_fs_scan_data = self.build_scan_ids()
+        self.training_scans, self.test_scans, self.hsnet_scan_record = self.build_scan_ids()
 
     # TODO: What is this supposed to be??
     def __len__(self):
+        """ returns the number of samples in the dataset """
+        # instead of looping through all the training images (--> len(self.img_metadata)) we should set a default amount per training epoch
         return len(self.img_metadata) if self.split == 'trn' else 1000
 
     # TODO: Edit this to work like i want it to
     def __getitem__(self, idx):
         idx %= len(self.img_metadata)  # for testing, as n_images < 1000
-        query_name, support_names, class_sample = self.sample_episode(idx)
-        query_img, query_cmask, support_imgs, support_cmasks, org_qry_imsize = self.load_frame(query_name, support_names)
 
-        query_img = self.transform(query_img)
+        # sample an episode
+        query_image, query_mask, query_name, support_images, support_masks, support_names, org_qry_imsize, selected_class  = self.sample_episode()
+
+        # Apply transformations #TODO CHECK WHICH TRANSFORMATIONS ARE APPLIED
+        query_image = self.transform(query_image)
+
+        # Resize image
         if not self.use_original_imgsize:
-            query_cmask = F.interpolate(query_cmask.unsqueeze(0).unsqueeze(0).float(), query_img.size()[-2:], mode='nearest').squeeze()
-        query_mask, query_ignore_idx = self.extract_ignore_idx(query_cmask.float(), class_sample)
+            query_mask = F.interpolate(query_mask.unsqueeze(0).unsqueeze(0).float(), query_image.size()[-2:], mode='nearest').squeeze() #NOTE Query_mask might not have the right input shape
 
-        support_imgs = torch.stack([self.transform(support_img) for support_img in support_imgs])
+        # stack support images
+        support_images = torch.stack([self.transform(support_img) for support_img in support_images])
 
         support_masks = []
         support_ignore_idxs = []
-        for scmask in support_cmasks:
-            scmask = F.interpolate(scmask.unsqueeze(0).unsqueeze(0).float(), support_imgs.size()[-2:], mode='nearest').squeeze()
-            support_mask, support_ignore_idx = self.extract_ignore_idx(scmask, class_sample)
-            support_masks.append(support_mask)
-            support_ignore_idxs.append(support_ignore_idx)
+
+        # for each support item
+        for mask in support_masks:
+            # Resize image
+            mask = F.interpolate(mask.unsqueeze(0).unsqueeze(0).float(), support_images.size()[-2:], mode='nearest').squeeze() #NOTE Support_mask might not have the right input shape
+
+            # save
+            support_masks.append(mask)
+
+        # convert into stack    
         support_masks = torch.stack(support_masks)
         support_ignore_idxs = torch.stack(support_ignore_idxs)
 
-        batch = {'query_img': query_img,
+        # package
+        batch = {'query_img': query_image,
                  'query_mask': query_mask,
                  'query_name': query_name,
-                 'query_ignore_idx': query_ignore_idx,
 
                  'org_query_imsize': org_qry_imsize,
 
-                 'support_imgs': support_imgs,
+                 'support_imgs': support_images,
                  'support_masks': support_masks,
                  'support_names': support_names,
-                 'support_ignore_idxs': support_ignore_idxs,
 
-                 'class_id': torch.tensor(class_sample)}
+                 'class_id': torch.tensor(selected_class)}
 
         return batch
 
-    def extract_ignore_idx(self, mask, class_id):
-        boundary = (mask / 255).floor()
-        mask[mask != class_id + 1] = 0
-        mask[mask == class_id + 1] = 1
+    def sample_episode(self):
+        # randomly choose class for current batch
+        selected_class = self.sample_class()
 
-        return mask, boundary
+        # select scans
+        query_scan, support_scans = self.sample_scan(selected_class)
 
-    def load_frame(self, query_name, support_names):
-        query_img = self.read_img(query_name)
-        query_mask = self.read_mask(query_name)
-        support_imgs = [self.read_img(name) for name in support_names]
-        support_masks = [self.read_mask(name) for name in support_names]
+        # select slices
+        query_slice, support_slices = self.sample_slices(selected_class, query_scan, support_scans)
 
-        org_qry_imsize = query_img.size
+        # sample images
+        query_image, query_mask, query_name, support_images, support_masks, support_names, org_qry_imsize = self.load_images_slices(query_scan, query_slice, support_scans, support_slices, selected_class)
 
-        return query_img, query_mask, support_imgs, support_masks, org_qry_imsize
+        return query_image, query_mask, query_name, support_images, support_masks, support_names, org_qry_imsize, selected_class
 
-    def read_mask(self, img_name):
-        r"""Return segmentation mask in PIL Image"""
-        mask = torch.tensor(np.array(Image.open(os.path.join(self.ann_path, img_name) + '.png')))
-        return mask
+    def sample_class(self):
+        # pick a random class
+        if self.split == 'trn':
+            return np.random.choice(self.class_ids_train, 1) [0]
+        elif self.split == 'val':
+            return np.random.choice(self.class_ids_val, 1) [0]
+        else:
+            return np.random.choice(self.class_ids_test, 1) [0]
+        
+    def sample_scan(self, selected_class):
+        # pick random scans equal to the number of shots + 1
+        if self.split == 'trn' or self.split == 'val':
+            allowed_scans = self.training_scans
+        else:
+            allowed_scans = self.test_scans
+            
+        # no duplicate scans and only scans containing the class
+        selected_scans = []
+        while True:
+            selected_scan =  np.random.choice(self.hsnet_slice_record['slice_record'][str(selected_class)].keys(), 1, replace=False)[0]
+            if selected_scan not in selected_scans and selected_scan in allowed_scans: 
+                selected_scans.append(selected_scan)
+            if len(selected_scans) == (1+self.shot):
+                return selected_scans[0], selected_scans[1:]
+        
+    def sample_slices(self, selected_class, query_scan, support_scans):
+        # Randomly select query slice
+        query_slice = np.random.choice(self.hsnet_slice_record[str(selected_class)][query_scan]['positive_cases'], 1)[0]
 
-    def read_img(self, img_name):
-        r"""Return RGB image in PIL Image"""
-        return Image.open(os.path.join(self.img_path, img_name) + '.jpg')
-
-    def sample_episode(self, idx):
-        query_name, class_sample = self.img_metadata[idx]
-
-        support_names = []
-        while True:  # keep sampling support set if query == support
-            support_name = np.random.choice(self.img_metadata_classwise[class_sample], 1, replace=False)[0]
-            if query_name != support_name: support_names.append(support_name)
-            if len(support_names) == self.shot: break
-
-        return query_name, support_names, class_sample
+        # Randomly select support slices
+        support_slices = []
+        for support_scan in support_scans:
+            support_slices.append(np.random.choice(self.hsnet_slice_record[str(selected_class)][support_scan]['positive_cases'], 1))
+        
+        return query_slice, support_slices
     
+    def load_images_slices(self, query_scan, query_slice, support_scans, support_slices, selected_class):
+
+        query_name = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(query_scan) + "_" + self.__convert_int_to_string_lenght_3__(query_slice) + ".nii.gz"
+
+        # load slice
+        query_image, _ = torch.tensor(io.load(os.path.join(os.path.join(self.datapath, 'Scan_slices/'), query_name)))
+        query_mask, _ = io.load(os.path.join(os.path.join(self.datapath, 'Annotation_slices/'), query_name))
+
+        # remove annotations except those of the selected class
+        query_mask = torch.tensor(np.array(self.__remove_classes__(query_mask, selected_class))) ## MIGHT ALREADY BE NP ARRAY
+
+        org_qry_imsize = query_image.shape()
+
+        support_images = []
+        support_masks = []
+        support_names = []
+
+        for i in range(0, len(support_scans)):
+            support_name = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(support_scans[i]) + "_" + self.__convert_int_to_string_lenght_3__(support_slices[i]) + ".nii.gz"
+
+            # load slice
+            support_image, _ = torch.tensor(io.load(os.path.join(os.path.join(self.datapath, 'Scan_slices/'), support_name)))
+            support_mask, _ = io.load(os.path.join(os.path.join(self.datapath, 'Annotation_slices/'), support_name))
+
+            # remove annotations except those of the selected class
+            support_mask = torch.tensor(np.array(self.__remove_classes__(support_mask, selected_class))) ## MIGHT ALREADY BE NP ARRAY
+
+            # save
+            support_images.append(support_image)
+            support_masks.append(support_mask)
+            support_names.append(support_name)
+
+        return query_image, query_mask, query_name, support_images, support_masks, support_names, org_qry_imsize
+    
+    # TODO change so it used the slices instead of the full scans
+    # def load_images_full_scans(self, query_scan, query_slice, support_scans, support_slices, selected_class):
+    #     # load scan
+    #     image_data, _ = io.load(self.list_of_img_files[query_scan])
+    #     annotation_data, _ = io.load(self.list_of_annot_files[query_scan])
+
+    #     # remove annotations except those of the selected class
+    #     annotation_data = self.__remove_classes__(annotation_data, selected_class)
+
+    #     # pick slice
+    #     query_image = image_data[query_slice]
+    #     query_mask = annotation_data[query_slice]
+
+    #     org_qry_imsize = query_image.shape()
+
+    #     support_images = []
+    #     support_masks = []
+
+    #     for i in range(0, len(support_scans)):
+    #         # load scan
+    #         image_data, _ = io.load(self.list_of_img_files[support_scans[i]])
+    #         annotation_data, _ = io.load(self.list_of_annot_files[support_scans[i]])
+
+    #         # remove annotations except those of the selected class
+    #         annotation_data = self.__remove_classes__(annotation_data, selected_class)
+
+    #         # pick slice
+    #         support_images.append(image_data[support_slices[i]])
+    #         support_masks.append(annotation_data[support_slices[i]])
+
+    #     return query_image, query_mask, support_images, support_masks, org_qry_imsize
 
     def build_class_ids(self):
 
-        class_ids_test = [[1,2],     # [lung_upper_lobe_left, lung_lower_lobe_left] --> Left lung
+        class_ids_test =  [[1,2],    # [lung_upper_lobe_left, lung_lower_lobe_left] --> Left lung
                            [13],     # aorta
                            [20],     # autochthon_right
                            [22],     # clavicula_right
@@ -165,7 +267,7 @@ class DatasetUMC(Dataset):
         except:
             print(f"ran into an issue when trying to open HSnet_umc_scans_split.json")
 
-        nr_scans = self.database_info["nr_scans"]
+        nr_scans = self.hsnet_slice_record["nr_scans"]
 
         test_scan_percentage = 0.2
 
@@ -186,14 +288,14 @@ class DatasetUMC(Dataset):
             for class_ in self.class_ids_train + self.class_ids_val:
                 nr_slices_per_class[str(class_)] = 0
                 for scan_ in selected_training_scans:
-                    nr_slices_per_class[str(class_)] += self.database_info["slice_record"][str(class_)][str(scan_)]['nr_pos_slices']
+                    nr_slices_per_class[str(class_)] += self.hsnet_slice_record["slice_record"][str(class_)][str(scan_)]['nr_pos_slices']
             
             # loop over classes in test:
             # and get the number of positive slices ih the selected scans
             for class_ in self.class_ids_test:
                 nr_slices_per_class[str(class_)] = 0
                 for scan_ in selected_test_scans:
-                    nr_slices_per_class[str(class_)] += self.database_info["slice_record"][str(class_)][str(scan_)]['nr_pos_slices']
+                    nr_slices_per_class[str(class_)] += self.hsnet_slice_record["slice_record"][str(class_)][str(scan_)]['nr_pos_slices']
             
             # Check if there are enough slices per class
             if sum(np.array(list(nr_slices_per_class.values())) > self.slice_per_class_treshold) == len(nr_slices_per_class.values()):
@@ -212,7 +314,6 @@ class DatasetUMC(Dataset):
 
                 scan_split = True
         return selected_training_scans, selected_test_scans, hsnet_fs_scan_data
-
 
     def load_database_json(self):
         try:
@@ -235,11 +336,6 @@ class DatasetUMC(Dataset):
         return hsnet_slice_record
     
     def create_fs_slice_json(self):
-                
-        # Get path of images and annotations
-        list_of_img_files = natsorted(glob.glob(self.datapath + "Scans/*.nii.gz"))
-        list_of_annot_files = natsorted(glob.glob(self.datapath + "Annotations/*.nii.gz"))
-
         # Keeps track of the positive and negative slices per scan
         slice_record = {}
 
@@ -250,10 +346,10 @@ class DatasetUMC(Dataset):
         combined_classes = self.class_ids_test + self.class_ids_val + self.class_ids_train
 
         # Find the slices with and without the class per training scan
-        for scan_idx in range(0, len(list_of_img_files)):
+        for scan_idx in range(0, len(self.list_of_img_files)):
 
             # load scan
-            image_data, _, annot_data, _ = self.__load_scan_and_annotation_dirs__(list_of_img_files, list_of_annot_files, scan_idx)
+            image_data, _, annot_data, _ = self.__load_scan_and_annotation_dirs__(self.list_of_img_files, self.list_of_annot_files, scan_idx)
 
             # loop over all classes
             for class_id in combined_classes:
@@ -280,13 +376,56 @@ class DatasetUMC(Dataset):
             
         # Write info to the json file
         new_class_data = {}
-        new_class_data['nr_scans'] = len(list_of_img_files)
+        new_class_data['nr_scans'] = len(self.list_of_img_files)
         new_class_data['slice_record'] = [slice_record]
 
         with open(self.datapath + f"/HSnet_slice_record.json", 'w') as f:
             json.dump(new_class_data, f, indent = 4)
 
-    def __load_scan_and_annotation_dirs__(list_of_img_files, list_of_annot_files, scan_index):
+    def create_fs_slice(self):
+        # Find the slices with and without the class per training scan
+        for scan_idx in range(0, len(self.list_of_img_files)):
+
+            # load scan
+            image_data, image_header, annotation_data, annotation_header = self.__load_scan_and_annotation_dirs__(self.list_of_img_files, self.list_of_annot_files, scan_idx)
+
+            for slice_idx in range(0, image_data.shape[-1]):
+
+                # ANNOTATION SLICE
+                annotation_filename =  "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
+
+                # add dimension (nnunet requirement)
+                annotation_slice = np.expand_dims(annotation_data[:,:,slice_idx], axis = -1)
+
+                # save
+                io.save(annotation_slice, os.path.join(os.path.join(self.datapath, 'Annotation_slices/'), annotation_filename), annotation_header)
+
+                # free up memory (IMPORTANT)
+                del annotation_slice
+                gc.collect()
+
+                # SCAN SLICE
+                scan_filename = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
+            
+                # add dimension (nnunet requirement)
+                image_slice = np.expand_dims(image_data[:,:,slice_idx], axis = -1)
+
+                # Save
+                io.save(image_slice, os.path.join(os.path.join(self.datapath, 'Scan_slices/'), scan_filename), image_header)
+            
+                # free up memory (IMPORTANT)
+                del image_slice
+                gc.collect()
+
+    def __convert_int_to_string_lenght_3__(self, int):
+        if len(str(int)) == 1:
+            return "00" + str(int)
+        elif len(str(int)) == 2:
+            return "0" + str(int)
+        else:
+            return str(int)
+
+    def __load_scan_and_annotation_dirs__(self, list_of_img_files, list_of_annot_files, scan_index):
         ''' Load a scan and annotation file picked from a pandas data frame at {scan_index} '''
         
         # Check if both the scan and annotation exist

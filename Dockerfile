@@ -31,6 +31,7 @@ RUN echo "source activate hsnet" > ~/.bashrc
 ENV PATH /opt/conda/envs/hsnet/bin:$PATH
 
 #USER root
+RUN pip3 install SimpleITK==2.0.2
 
 #COPY run.sh /root/
 
