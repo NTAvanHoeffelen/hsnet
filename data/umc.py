@@ -49,6 +49,9 @@ class DatasetUMC(Dataset):
         # NOTE: This actually should not be necessary. We just need to make sure that when we test on the test set, that the query and support item do not come from the same scan.
         self.training_scans, self.test_scans, self.hsnet_scan_record = self.build_scan_ids()
 
+        # Create the dataset of FS slices
+        self.create_fs_slice()
+
     # TODO: What is this supposed to be??
     def __len__(self):
         """ returns the number of samples in the dataset """
@@ -110,7 +113,7 @@ class DatasetUMC(Dataset):
         query_scan, support_scans = self.sample_scan(selected_class)
 
         # select slices
-        query_slice, support_slices = self.sample_slices(selected_class, query_scan, support_scans)
+        query_slice, support_slices = self.sample_slices(selected_class, query_scan, support_scans) # TODO: WHAT IF THE NUMBER OF REQUESTED SLICES ARE MORE THEN EXISTING POSITIVE SLICES
 
         # sample images
         query_image, query_mask, query_name, support_images, support_masks, support_names, org_qry_imsize = self.load_images_slices(query_scan, query_slice, support_scans, support_slices, selected_class)
@@ -174,8 +177,8 @@ class DatasetUMC(Dataset):
             support_name = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(support_scans[i]) + "_" + self.__convert_int_to_string_lenght_3__(support_slices[i]) + ".nii.gz"
 
             # load slice
-            support_image, _ = torch.tensor(io.load(os.path.join(os.path.join(self.datapath, 'Scan_slices/'), support_name)))
-            support_mask, _ = io.load(os.path.join(os.path.join(self.datapath, 'Annotation_slices/'), support_name))
+            support_image, _ = torch.tensor(io.load(os.path.join(os.path.join(self.datapath, 'FS_UMC/Scan_slices/'), support_name)))
+            support_mask, _ = io.load(os.path.join(os.path.join(self.datapath, 'FS_UMC/Annotation_slices/'), support_name))
 
             # remove annotations except those of the selected class
             support_mask = torch.tensor(np.array(self.__remove_classes__(support_mask, selected_class))) ## MIGHT ALREADY BE NP ARRAY
@@ -237,18 +240,16 @@ class DatasetUMC(Dataset):
         all_class_ids = np.arange(1,86)
 
         # NOTE: Should we select these randomly???
-        #NR_VAL_CLASSES = 8
+        #NR_VAL_CLASSES = 6
         #class_ids_val = np.random.choice(np.setdiff1d(all_class_ids, class_ids_test_flat), NR_VAL_CLASSES, False)
         
-        # 8 classes randomly picked
+        # 6 classes picked for validation
         class_ids_val = [[16],   # pancreas
                          [44],   # rib_left_7
                          [52],   # rib_right_3
                          [8],    # kidney_left
                          [33],   # iliac_vena_right
-                         [67],   # vertebrae_C5
-                         [76],   # vertebrae_T10
-                         [71]]   # vertebrae_L2
+                         [67]]   # vertebrae_C5
         
         class_ids_val_flat = [item for sublist in class_ids_val for item in sublist]
 
@@ -259,7 +260,7 @@ class DatasetUMC(Dataset):
 
     def build_scan_ids(self):
         try:
-            hsnet_fs_scan_data = open(os.path.join(self.datapath, "/HSnet_umc_scans_split.json"))
+            hsnet_fs_scan_data = open(os.path.join(self.datapath, "FS_UMC/HSnet_umc_scans_split.json"))
             test_scans = hsnet_fs_scan_data['test_scans']
             training_scans = hsnet_fs_scan_data['train_and_val_scans']
 
@@ -267,13 +268,17 @@ class DatasetUMC(Dataset):
         except:
             print(f"ran into an issue when trying to open HSnet_umc_scans_split.json")
 
+        # get nr of scans
         nr_scans = self.hsnet_slice_record["nr_scans"]
 
+        # define percentage of scans used for testing
         test_scan_percentage = 0.2
 
+        # calculate number of scans for both training and testing
         test_amount = int(np.floor(nr_scans * test_scan_percentage))
         train_amount = int(np.ceil(nr_scans * (1 - test_scan_percentage)))
 
+        # boolean to keep track if correct split has been accomplished
         scan_split = False
 
         while not scan_split:
@@ -283,7 +288,7 @@ class DatasetUMC(Dataset):
             selected_training_scans = np.random.choice(np.setdiff1d(np.arange(0,nr_scans), selected_test_scans), train_amount, False)
 
             # loop over classes in training and validation
-            # and get the number of positive slices ih the selected scans
+            # and get the number of positive slices in the selected scans
             nr_slices_per_class = {}
             for class_ in self.class_ids_train + self.class_ids_val:
                 nr_slices_per_class[str(class_)] = 0
@@ -309,7 +314,7 @@ class DatasetUMC(Dataset):
                 hsnet_fs_scan_data['test_classes'] = self.class_ids_test
                 hsnet_fs_scan_data['nr_pos_slices'] = nr_slices_per_class
 
-                with open(self.datapath + f"/HSnet_umc_scans_split.json", 'w') as f:
+                with open(self.datapath + f"FS_UMC/HSnet_umc_scans_split.json", 'w') as f:
                     json.dump(hsnet_fs_scan_data, f, indent = 4)
 
                 scan_split = True
@@ -318,7 +323,7 @@ class DatasetUMC(Dataset):
     def load_database_json(self):
         try:
             # Open json
-            database_info_file = open(os.path.join(self.datapath, "/HSnet_slice_record.json"))
+            database_info_file = open(os.path.join(self.datapath, "FS_UMC/HSnet_slice_record.json"))
 
             # Load json
             hsnet_slice_record = json.load(database_info_file)
@@ -328,7 +333,7 @@ class DatasetUMC(Dataset):
             self.create_fs_slice_json()
 
             # Open json
-            database_info_file = open(os.path.join(self.datapath, "/HSnet_slice_record.json"))
+            database_info_file = open(os.path.join(self.datapath, "FS_UMC/HSnet_slice_record.json"))
 
             # Load json
             hsnet_slice_record = json.load(database_info_file)
@@ -339,10 +344,7 @@ class DatasetUMC(Dataset):
         # Keeps track of the positive and negative slices per scan
         slice_record = {}
 
-        # Keeps track of which scans have 0 non-class slices
-        train_scan_without_non_class_slices = []
-
-        # add together
+        # add all classes together to loop over later
         combined_classes = self.class_ids_test + self.class_ids_val + self.class_ids_train
 
         # Find the slices with and without the class per training scan
@@ -353,23 +355,23 @@ class DatasetUMC(Dataset):
 
             # loop over all classes
             for class_id in combined_classes:
-
+                
+                # create copy of scan
                 image_data_copy, annot_data_copy = image_data.copy(), annot_data.copy()
 
+                # create entry for class + scan
                 if str(class_id) not in slice_record.keys():
                     slice_record[str(class_id)] = {}
                 if scan_idx not in slice_record[str(class_id)].keys():
                     slice_record[str(class_id)][scan_idx] = {}
 
-
+                # remove all classes but current class
                 annot_data = self.__remove_classes__(annot_data_copy, class_id)
 
-                # Get all slices containing foreground class
+                # Get all slices containing foreground class and without foreground class
                 class_slices, non_class_slices = self.__get_class_slices__(image_data_copy, annot_data_copy)
 
-                if len(list(non_class_slices)) == 0:
-                    train_scan_without_non_class_slices.append(str(scan_idx))
-
+                # add to dictionary
                 slice_record[str(class_id)][scan_idx]['positive_cases'] = list(class_slices)
                 slice_record[str(class_id)][scan_idx]['negative_cases'] = list(non_class_slices)
                 slice_record[str(class_id)][scan_idx]['nr_pos_slices'] = len(list(class_slices))
@@ -379,43 +381,51 @@ class DatasetUMC(Dataset):
         new_class_data['nr_scans'] = len(self.list_of_img_files)
         new_class_data['slice_record'] = [slice_record]
 
-        with open(self.datapath + f"/HSnet_slice_record.json", 'w') as f:
+        with open(self.datapath + "FS_UMC/HSnet_slice_record.json", 'w') as f:
             json.dump(new_class_data, f, indent = 4)
 
     def create_fs_slice(self):
-        # Find the slices with and without the class per training scan
-        for scan_idx in range(0, len(self.list_of_img_files)):
+        img_slice_path = os.path.join(self.datapath, 'FS_UMC/Scan_slices/')          
+        annot_slice_path = os.path.join(self.datapath, 'FS_UMC/Annotation_slices/')
+        list_of_img_slice_files = natsorted(glob.glob(img_slice_path + "/*.nii.gz"))
+        list_of_annot_slice_files = natsorted(glob.glob(annot_slice_path + "/*.nii.gz"))
 
-            # load scan
-            image_data, image_header, annotation_data, annotation_header = self.__load_scan_and_annotation_dirs__(self.list_of_img_files, self.list_of_annot_files, scan_idx)
+        if len(list_of_annot_slice_files) == len(list_of_img_slice_files) and len(list_of_annot_slice_files) > 0 and len(list_of_img_slice_files) > 0:
+            return
+        else:
+            # Find the slices with and without the class per training scan
+            for scan_idx in range(0, len(self.list_of_img_files)):
 
-            for slice_idx in range(0, image_data.shape[-1]):
+                # load scan
+                image_data, image_header, annotation_data, annotation_header = self.__load_scan_and_annotation_dirs__(self.list_of_img_files, self.list_of_annot_files, scan_idx)
 
-                # ANNOTATION SLICE
-                annotation_filename =  "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
+                for slice_idx in range(0, image_data.shape[-1]):
 
-                # add dimension (nnunet requirement)
-                annotation_slice = np.expand_dims(annotation_data[:,:,slice_idx], axis = -1)
+                    # ANNOTATION SLICE
+                    annotation_filename =  "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
 
-                # save
-                io.save(annotation_slice, os.path.join(os.path.join(self.datapath, 'Annotation_slices/'), annotation_filename), annotation_header)
+                    # add dimension (nnunet requirement)
+                    annotation_slice = np.expand_dims(annotation_data[:,:,slice_idx], axis = -1)
 
-                # free up memory (IMPORTANT)
-                del annotation_slice
-                gc.collect()
+                    # save
+                    io.save(annotation_slice, os.path.join(os.path.join(self.datapath, 'FS_UMC/Annotation_slices/'), annotation_filename), annotation_header)
 
-                # SCAN SLICE
-                scan_filename = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
-            
-                # add dimension (nnunet requirement)
-                image_slice = np.expand_dims(image_data[:,:,slice_idx], axis = -1)
+                    # free up memory (IMPORTANT)
+                    del annotation_slice
+                    gc.collect()
 
-                # Save
-                io.save(image_slice, os.path.join(os.path.join(self.datapath, 'Scan_slices/'), scan_filename), image_header)
-            
-                # free up memory (IMPORTANT)
-                del image_slice
-                gc.collect()
+                    # SCAN SLICE
+                    scan_filename = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
+                
+                    # add dimension (nnunet requirement)
+                    image_slice = np.expand_dims(image_data[:,:,slice_idx], axis = -1)
+
+                    # Save
+                    io.save(image_slice, os.path.join(os.path.join(self.datapath, 'FS_UMC/Scan_slices/'), scan_filename), image_header)
+                
+                    # free up memory (IMPORTANT)
+                    del image_slice
+                    gc.collect()
 
     def __convert_int_to_string_lenght_3__(self, int):
         if len(str(int)) == 1:
