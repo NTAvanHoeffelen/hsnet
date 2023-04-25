@@ -1,4 +1,4 @@
-FROM doduo1.umcn.nl/uokbaseimage/base:tf2.10-pt1.12
+FROM doduo2.umcn.nl/uokbaseimage/base:tf2.10-pt1.12
 
 # Configuration
 RUN echo "PYTHONUNBUFFERED=1" >> /etc/environment && \
@@ -31,12 +31,12 @@ RUN echo "source activate hsnet" > ~/.bashrc
 ENV PATH /opt/conda/envs/hsnet/bin:$PATH
 
 #USER root
-RUN pip3 install SimpleITK==2.0.2
+RUN python3 -m pip install SimpleITK==2.0.2
 
 #COPY run.sh /root/
 
 # Configure entrypoint
-ENTRYPOINT ["/bin/bash","/home/user/hsnet/run.sh"]
+#ENTRYPOINT ["/bin/bash","/home/user/hsnet/run.sh"]
 
-# docker build "/mnt/netcache/bodyct/temp/fewshot_Niels/hsnet" --no-cache --tag doduo1.umcn.nl/nielsvanhoeffelen/fs_model:1.0
-# docker push doduo1.umcn.nl/nielsvanhoeffelen/fs_model:1.0
+# docker build "/mnt/netcache/bodyct/temp/fewshot_Niels/hsnet" --no-cache --tag doduo2.umcn.nl/nielsvanhoeffelen/fs_model:1.0
+# docker push doduo2.umcn.nl/nielsvanhoeffelen/fs_model:1.0

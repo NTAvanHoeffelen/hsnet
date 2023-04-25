@@ -39,7 +39,7 @@ class DatasetUMC(Dataset):
         self.datapath = datapath
         self.transform = transform                                                  # NOTE: should it contain data augmentation? --> test first without then with
 
-        self.slice_per_class_treshold = 1000
+        self.slice_per_class_treshold = 500
 
         self.class_ids_train, self.class_ids_val, self.class_ids_test = self.build_class_ids()
         
@@ -158,7 +158,7 @@ class DatasetUMC(Dataset):
     
     def load_images_slices(self, query_scan, query_slice, support_scans, support_slices, selected_class):
 
-        query_name = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(query_scan) + "_" + self.__convert_int_to_string_lenght_3__(query_slice) + ".nii.gz"
+        query_name = "FS"+ "_" + self.__convert_int_to_string_length_3__(query_scan) + "_" + self.__convert_int_to_string_length_3__(query_slice) + ".nii.gz"
 
         # load slice
         query_image, _ = torch.tensor(io.load(os.path.join(os.path.join(self.datapath, 'Scan_slices/'), query_name)))
@@ -174,7 +174,7 @@ class DatasetUMC(Dataset):
         support_names = []
 
         for i in range(0, len(support_scans)):
-            support_name = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(support_scans[i]) + "_" + self.__convert_int_to_string_lenght_3__(support_slices[i]) + ".nii.gz"
+            support_name = "FS"+ "_" + self.__convert_int_to_string_length_3__(support_scans[i]) + "_" + self.__convert_int_to_string_length_3__(support_slices[i]) + ".nii.gz"
 
             # load slice
             support_image, _ = torch.tensor(io.load(os.path.join(os.path.join(self.datapath, 'FS_UMC/Scan_slices/'), support_name)))
@@ -402,7 +402,7 @@ class DatasetUMC(Dataset):
                 for slice_idx in range(0, image_data.shape[-1]):
 
                     # ANNOTATION SLICE
-                    annotation_filename =  "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
+                    annotation_filename =  "FS"+ "_" + self.__convert_int_to_string_length_3__(scan_idx) + "_" + self.__convert_int_to_string_length_3__(slice_idx) + ".nii.gz"
 
                     # add dimension (nnunet requirement)
                     annotation_slice = np.expand_dims(annotation_data[:,:,slice_idx], axis = -1)
@@ -415,7 +415,7 @@ class DatasetUMC(Dataset):
                     gc.collect()
 
                     # SCAN SLICE
-                    scan_filename = "FS"+ "_" + self.__convert_int_to_string_lenght_3__(slice_idx) + "_" + self.__convert_int_to_string_lenght_3__(scan_idx) + ".nii.gz"
+                    scan_filename = "FS"+ "_" + self.__convert_int_to_string_length_3__(scan_idx) + "_" + self.__convert_int_to_string_length_3__(slice_idx) + ".nii.gz"
                 
                     # add dimension (nnunet requirement)
                     image_slice = np.expand_dims(image_data[:,:,slice_idx], axis = -1)
@@ -427,7 +427,7 @@ class DatasetUMC(Dataset):
                     del image_slice
                     gc.collect()
 
-    def __convert_int_to_string_lenght_3__(self, int):
+    def __convert_int_to_string_length_3__(self, int):
         if len(str(int)) == 1:
             return "00" + str(int)
         elif len(str(int)) == 2:
