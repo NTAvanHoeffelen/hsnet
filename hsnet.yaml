@@ -12,6 +12,6 @@ dependencies:
   - torchvision=0.6.1
   - pip:
     - tensorboardx==2.5.1
-    - SimpleITK=2.0.2
+    - SimpleITK==2.0.2
     - natsort
     - MedPy
