@@ -5,9 +5,9 @@ RUN echo "PYTHONUNBUFFERED=1" >> /etc/environment && \
     echo "OMP_NUM_THREADS=1" >> /etc/environment
 
 # Install miniconda
-RUN wget --progress=dot:mega https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh \
-        && chmod +x miniconda.sh && ./miniconda.sh -b -p /home/user/conda \
-        && rm -f miniconda.sh
+RUN wget --progress=dot:mega https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-Linux-x86_64.sh -O Mambaforge-Linux-x86_64.sh \
+        && chmod +x Mambaforge-Linux-x86_64.sh && bash ./Mambaforge-Linux-x86_64.sh -b -p /home/user/conda \
+        && rm -f Mambaforge-Linux-x86_64.sh
 
 # add conda to the path
 ENV PATH /home/user/conda/bin:$PATH
@@ -26,13 +26,13 @@ RUN git config --global advice.detachedHead false && \
     git -C /home/user/hsnet checkout umc && \
     chown -R user /home/user/hsnet
 
-RUN conda env create -f /home/user/hsnet/hsnet.yaml
-RUN echo "source activate hsnet" > ~/.bashrc
-ENV PATH /opt/conda/envs/hsnet/bin:$PATH
+ARG CENV="conda_cart_env37n_tf-cpu_28_07_21.yaml"
+RUN mamba env create -f /home/user/hsnet/hsnet.yaml
+RUN mamba clean --all --yes
 
-#USER root
-RUN python3 -m pip install SimpleITK==2.0.2
-
+#RUN echo "source /home/user/conda/etc/profile.d/conda.sh" > ~/.bashrc
+#RUN echo "conda activate hsnet" > ~/.bashrc
+    
 #COPY run.sh /root/
 
 # Configure entrypoint
